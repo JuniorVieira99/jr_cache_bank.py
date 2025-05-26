@@ -1,0 +1,43 @@
+[project]
+name = "jr-cache_bank"
+version = "0.1.0"
+description = "A cache bank for Python applications"
+readme = "README.md"
+requires-python = ">=3.12"
+
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries :: Python Modules"
+]
+
+keywords = [
+    "thread-safe",
+    "cache",
+    "caching",
+    "lru",
+    "python",
+]
+
+dependencies = [
+    "black>=25.1.0",
+    "pyaml>=25.1.0",
+    "pytest>=8.3.4",
+    "pytest-benchmark>=5.1.0",
+]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["jr_cache_bank*"]
+exclude = ["tests*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py", "tests_*.py"]
+addopts = "-v -s -W default"
