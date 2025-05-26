@@ -33,13 +33,13 @@ This library is designed to be easy to use, with a simple API that allows you to
 
 ## Features
 
-🔒 Thread-safe and process-safe caching
-🚀 Simple API with function decorators for easy implementation
-🔄 Multiple cache types (pickle, zlib, gzip) for flexibility
-📊 Detailed cache reporting for performance monitoring
-💾 Persistence with save/load capabilities
-⏱️ LRU (Least Recently Used) eviction policy
-🛠️ Configurable maximum size, compression level, and more
+- 🔒 Thread-safe and process-safe caching
+- 🚀 Simple API with function decorators for easy implementation
+- 🔄 Multiple cache types (pickle, zlib, gzip, JSON, YAML) for flexibility
+- 📊 Detailed cache reporting for performance monitoring
+- 💾 Persistence with save/load capabilities
+- ⏱️ LRU (Least Recently Used) eviction policy
+- 🛠️ Configurable maximum size, compression level, and more
 
 ------------------------
 
@@ -111,8 +111,9 @@ from jr_cache_bank import CacheBank, CacheSize
 # Create a cache bank
 cache = CacheBank()
 
-# Create a cache bank with a maximum memory size
-@cache.wrapper(max_size=CacheSize.E_1MB)
+# Create a cache bank with a maximum memory size for the func cached
+# Otherwiise, will use the default max_func_memory_size attribute
+@cache.wrapper(max_size=CacheSize.E_1MB) # Enum for cache size - 1mb
 def fibonacci(n):
     if n <= 1:
         return n
@@ -214,6 +215,8 @@ Enum for different cache serialization strategies:
 - `CacheType.PICKLE` - Standard Python serialization
 - `CacheType.ZLIB` - Compressed serialization with zlib
 - `CacheType.GZIP` - Compressed serialization with gzip
+- `CacheType.JSON` - Serialization to JSON format
+- `CacheType.YAML` - Serialization to YAML format
 
 ### CacheSize
 
