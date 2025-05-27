@@ -198,7 +198,7 @@ if __name__ == "__main__":
         )
 
         # Make a cache bank
-        cache: CacheBank = CacheBank(max_bank_size=100, lru=True)
+        cache: CacheBank = CacheBank(max_bank_size=100, lru=True, cache_type=CacheType.PICKLE)
 
         @cache.wrapper()
         def cached_square(x: int) -> int:
@@ -518,4 +518,4 @@ if __name__ == "__main__":
     #example_save_load_yaml()
     #example_prints()
     #example_specific_mem_restriction()
-    example_kwargs()
+    #example_kwargs()

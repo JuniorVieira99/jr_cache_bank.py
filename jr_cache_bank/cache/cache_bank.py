@@ -406,8 +406,7 @@ class CacheBank:
                 self.filename = filename
             else:
                 # Handle filename
-                string_prefix: str = Path(__file__).parent.parent.parent.resolve().stem
-                self.filename = Path(f"{string_prefix}/cache/dump/cache_bank{cache_type}").resolve()
+                self.filename = Path(f"jr_cache_bank/cache/dump/cache_bank{cache_type}").resolve()
 
             if cache_bank is None:
                 self.cache_bank = OrderedDict()
@@ -1440,7 +1439,7 @@ class CacheBank:
 
             for key in self.converter_container.get_keys():
                 if key in [CacheType.PICKLE, CacheType.JSON, CacheType.YAML, CacheType.ZLIB, CacheType.GZIP]:
-                    string: str = f"{Path(__file__).parent.parent.resolve()}/cache/dump/cache_bank{key}"
+                    string: str = f"jr_cache_bank/cache/dump/cache_bank{key}"
                     path_list.append(Path(string))
 
             for path in path_list:
