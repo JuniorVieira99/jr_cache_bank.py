@@ -1,4 +1,4 @@
-# jr_cache_bank
+# jr_cache_bank - version 0.1.0
 
 A simple, flexible, and thread-safe caching library for Python applications that provides multiple caching strategies and detailed cache performance reporting.
 
@@ -9,6 +9,7 @@ This library is designed to be easy to use, with a simple API that allows you to
 ## Index
 
 - [Features](#features)
+- [Dependencies](#dependencies)
 - [Installation](#installation)
 - [Quick Start](#quick-start)
 - [Usage Examples](#usage-examples)
@@ -26,6 +27,7 @@ This library is designed to be easy to use, with a simple API that allows you to
   - [Cache Bank Utils](#cache-bank-utils)
   - [Cache Persistence](#cache-persistence)
   - [Cache Performance Monitoring](#cache-performance-monitoring)
+- [Tests](#tests)
 - [License](#license)
 - [Contributions](#contributions)
 
@@ -40,8 +42,15 @@ This library is designed to be easy to use, with a simple API that allows you to
 - 💾 Persistence with save/load capabilities
 - ⏱️ LRU (Least Recently Used) eviction policy
 - 🛠️ Configurable maximum size, compression level, and more
+- Robust memory management with size limits per-function, total memory size, and maximum bank size
+- 🧪 Comprehensive tests for functionality and performance
 
 ------------------------
+
+## Dependencies
+
+- `pyaml` - For YAML serialization
+- `pytest` - For testing, if necessary
 
 ## Installation
 
@@ -849,6 +858,30 @@ LRU: True
 Cache Bank Length: 1
 Cache Bank:
         cached_square: OrderedDict({('cached_square', (0,)): 0, ('cached_square', (1,)): 1, ('cached_square', (2,)): 4, ('cached_square', (3,)): 9, ('cached_square', (4,)): 16, ('cached_square', (5,)): 25, ('cached_square', (6,)): 36, ('cached_square', (7,)): 49, ('cached_square', (8,)): 64, ('cached_square', (9,)): 81})
+```
+
+------------------------
+
+## Tests
+
+Tests are located in the `tests` directory. You can run them using `pytest`:
+
+- To run functionality tests:
+
+```bash
+pytest tests/test_cache_bank.py
+```
+
+- To run performance tests:
+
+```bash
+pytest tests/test_cache_bank_bench.py
+```
+
+- To run lru tests:
+
+```bash
+pytest tests/test_cache_bank_lru.py
 ```
 
 ------------------------

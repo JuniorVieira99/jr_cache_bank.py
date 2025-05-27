@@ -96,4 +96,15 @@ class CacheSize(IntEnum):
     E_10MB = 10 * E_1MB
     E_16MB = 16 * E_1MB
     E_32MB = 32 * E_1MB
-
+    
+    def to_human_readable(self) -> str:
+        """Convert to human readable format."""
+        if self.value < 1024 * 1024:
+            return f"{self.value // 1024}KB"
+        return f"{self.value // (1024 * 1024)}MB"
+    
+    @staticmethod
+    def get_all_sizes() -> list[int]:
+        """Get all sizes in bytes."""
+        return [size.value for size in CacheSize]
+    

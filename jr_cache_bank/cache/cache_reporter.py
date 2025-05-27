@@ -129,6 +129,7 @@ class CacheReporter:
         """
         try:
             super().__init__()
+            self._total = 0
             self.hits = 0
             self.misses = 0
             self.hit_rate = 0.0
@@ -149,21 +150,10 @@ class CacheReporter:
         """
         Returns the total number of cache accesses.
         """
-        try:
-            self._total = self.hits + self.misses
-            if self._total == 0:
-                self._hit_rate = 0.0
-                self._miss_rate = 0.0
-            else:
-                self._hit_rate = self.hits / self._total
-                self._miss_rate = self.misses / self._total
-            return self._total
-        except Exception as e:
-            LOGGER.error(f"Error getting 'total' from cache reporter: {e}")
-            raise CacheReporterPropertyError(
-                "Error getting 'total' from cache reporter."
-            ) from e
-    
+        if not hasattr(self, '_total'):
+            self._total = 0
+        return self._total
+
     @property
     def hits(self) -> int:
         """
@@ -231,6 +221,13 @@ class CacheReporter:
         if self._mutex is None:
             self._mutex = Lock()
         return self._mutex
+
+    @property
+    def cache_efficiency(self) -> float:
+        """Overall cache efficiency score (0-100)."""
+        if self.total == 0:
+            return 0.0
+        return (self.hit_rate * 0.8 + (1 - self.miss_rate) * 0.2) * 100
 
     # -------------
     # Setters
@@ -482,6 +479,9 @@ class CacheReporter:
                     # Update the hit rate
                     self.funcs[func_name]["hit_rate"] = hit_rate
 
+                    # Update Total
+                    self._total += 1          
+
         except Exception as e:
             LOGGER.error(f"Error '{e.__class__.__name__}' -> setting hit for function in cache reporter: {e}")
             raise CacheReporterSetFunctionError(
@@ -516,6 +516,9 @@ class CacheReporter:
 
                     # Update the miss rate
                     self.funcs[func_name]["miss_rate"] = miss_rate
+
+                    # Update Total
+                    self._total += 1
 
         except Exception as e:
             LOGGER.error(f"Error '{e.__class__.__name__}' -> setting miss for function in cache reporter: {e}")
@@ -602,6 +605,32 @@ class CacheReporter:
             raise CacheReporterMagicMethodError(
                 f"Error '{e.__class__.__name__}' -> clearing cache reporter: {e}"
             ) from e
+
+    def clear_func(self, func: str | Callable | partial) -> None:
+        """
+        clear_func
+        ==========
+        Clears the report for a specific function in the cache reporter.
+
+        Arguments:
+            func (str | Callable | partial) :
+                The function to clear the report for.
+        """
+        try:
+            # Get the function name
+            func_name: str = self._extract_name(func)
+
+            if func_name in self.funcs:
+                with self.mutex:
+                    del self.funcs[func_name]
+            else:
+                LOGGER.warning(f"Function {func_name} not found in cache reporter.")
+        except Exception as e:
+            LOGGER.error(f"Error '{e.__class__.__name__}' -> clearing function report: {e}")
+            raise CacheReporterMagicMethodError(
+                f"Error '{e.__class__.__name__}' -> clearing function report: {e}"
+            ) from e
+
 
     # -------------
     # Utils
@@ -699,6 +728,18 @@ class CacheReporter:
                 f"Error '{e.__class__.__name__}' -> printing report: {e}"
             ) from e
 
+    def get_summary(self) -> Dict[str, Any]:
+        """Get a summary of all statistics."""
+        return {
+            "total_accesses": self.total,
+            "hits": self.hits,
+            "misses": self.misses,
+            "hit_rate": round(self.hit_rate, 4),
+            "miss_rate": round(self.miss_rate, 4),
+            "efficiency_score": round(self.cache_efficiency, 2),
+            "functions_tracked": len(self.funcs)
+        }
+        
     # -------------
     # Helpers
 

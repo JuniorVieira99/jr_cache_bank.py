@@ -45,3 +45,11 @@ class CacheBankWrapperError(CacheBankException):
 class CacheBankConfigError(CacheBankException):
     """Raised when there is an error in the configuration of the Cache Bank."""
     pass
+
+class CacheBankAsyncSaveError(CacheBankException):
+    """Raised when there is an error in asynchronously saving data to the Cache Bank."""
+    pass
+
+class CacheBankAsyncLoadError(CacheBankException):
+    """Raised when there is an error in asynchronously loading data from the Cache Bank."""
+    pass

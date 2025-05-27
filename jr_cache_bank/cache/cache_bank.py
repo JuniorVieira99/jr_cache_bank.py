@@ -88,6 +88,7 @@ Example:
 import json
 import logging
 import os
+from re import L
 import sys
 import io
 import threading
@@ -97,7 +98,7 @@ from pathlib import Path
 from functools import partial, wraps
 
 from collections import OrderedDict
-from typing import Callable, Any, Coroutine, Dict, List, Optional, Tuple, Union
+from typing import Callable, Any, Dict, List, Optional, Tuple, Union
 
 # Locals
 from jr_cache_bank.config.setup_logger import setup_logger
@@ -116,8 +117,9 @@ from jr_cache_bank.exceptions.exceptions_cache_bank import (
     CacheBankSaveError,
     CacheBankLoadError,
     CacheBankRemoveError,
-    CacheBankWrapperError,
-    CacheBankConfigError
+    CacheBankConfigError,
+    CacheBankAsyncSaveError,
+    CacheBankAsyncLoadError
 )
 
 # -------------------------------------------------------------------------------------------------
@@ -149,6 +151,11 @@ class CacheBank:
     ========
     A class that implements a cache bank for storing and retrieving data.
 
+    Attention:
+    ----------
+    Loading pickle data is unsafe, only use it if you trust the source of the data.
+    If you are using pickle, zlib, or gzip, make sure to use the same cache type when loading the data.
+
     Notes:
     -------
     - The cache bank is implemented as an OrderedDict, which maintains the order of the items.
@@ -161,7 +168,7 @@ class CacheBank:
     -------
         #### CacheType (Enum) :
             An enumeration of the different types of cache (pickle, zlib, gzip).
-            - PICKLE: The cache type is pickle.
+            - PICKLE: The cache type is pickle. * Unsafe
             - ZLIB: The cache type is zlib.
             - GZIP: The cache type is gzip.
             - JSON: The cache type is JSON.
@@ -344,7 +351,7 @@ class CacheBank:
         max_func_memory_size: int = CacheSize.E_16KB,
         lru: bool = True,
         max_file_size: int = CacheSize.E_10MB,
-        cache_type: CacheType = CacheType.PICKLE,
+        cache_type: CacheType = CacheType.GZIP,
         cache_bank: Optional[OrderedDict[str, OrderedDict[Tuple, Any]]] = None,
         func_size_dict: Optional[Dict[str, CacheSize]] = None,
         filename: Optional[Union[str, Path]] = None,
@@ -357,7 +364,7 @@ class CacheBank:
         Arguments:
             max_bank_size (int) :
                 The maximum size of the cache bank.
-                - Default is 10000000 (10 MB).
+                - Default is 100
             max_total_memory_size (int) :
                 The maximum total memory size (bytes) of the cache bank.
                 - Default is CacheSize.E_10MB.
@@ -369,10 +376,10 @@ class CacheBank:
                 - Default is True.
             max_file_size (int) :
                 The maximum size of the cache bank file.
-                - Default is 10000000 (10MB).
+                - Default is CacheSize.E_10MB (10MB).
             cache_type (CacheType) :
                 The type of cache to use.
-                - Default is CacheType.PICKLE.
+                - Default is CacheType.GZIP.
             cache_bank (Dict[Any, Any]) :
                 The initial cache bank.
                 - Default is None.
@@ -450,8 +457,6 @@ class CacheBank:
         """
         Returns the function size dictionary.
         """
-        if not isinstance(self._func_size_dict, dict):
-            self._func_size_dict = {}
         return self._func_size_dict
 
     @property
@@ -781,7 +786,7 @@ class CacheBank:
             if self.lru:
                 # If the cache bank is full, remove the least recently used item
                 if len(self.cache_bank) >= self.max_bank_size:
-                    self.cache_bank.popitem(last=True)
+                    self.cache_bank.popitem(last=False)
             
                 # Add the new item to the cache bank
                 self.cache_bank[key] = value
@@ -790,7 +795,7 @@ class CacheBank:
             else:
                 # If the cache bank is full, remove the first item
                 if len(self.cache_bank) >= self.max_bank_size:
-                    self.cache_bank.popitem(last=False)
+                    self.cache_bank.popitem(last=True)
                 
                 # Add the new item to the cache bank
                 self.cache_bank[key] = value
@@ -902,22 +907,25 @@ class CacheBank:
             func_name: str = tuple_func[0]
 
             with self.mutex:
-                # Check LRU
-                self._lru_checker()
-
-                # Check and memory total LRU eviction
-                self._total_memory_checker()
 
                 # Add or update the cache entry
                 if func_name not in self.cache_bank:
+                    # Check LRU
+                    self._lru_checker()
+                    # Check and memory total LRU eviction
+                    self._total_memory_checker()
+
                     self.cache_bank[func_name] = OrderedDict()
                     self._cache_reporter.add_func(func)
                     LOGGER.debug(f"Added {func_name} to cache bank.")
-
-                # Check func entry size
-                self._func_memory_checker()
-                # Check specific func size
-                self._func_specific_mem_checker(func_name)
+                
+                # Check if the function have a specific mem constraint
+                if self.func_size_dict.get(func_name, None) is not None:
+                    # Check specific func size
+                    self._func_specific_mem_checker(func_name)
+                else:
+                    # Check default func size
+                    self._func_memory_checker()
 
                 # Update the result in the cache
                 self.cache_bank[func_name][tuple_func] = result
@@ -1227,15 +1235,23 @@ class CacheBank:
             else:
                 raise TypeError("Function must be callable or partial.")
             
-            if args is not None and not isinstance(args, (Tuple, List)):
-                raise TypeError("Arguments must be a tuple or  list.")
+            args_list = []
+
+            if args is not None:
+                for arg in args:
+                    if isinstance(arg, dict):
+                        t_arg = tuple(sorted(arg.items()))
+                        args_list.append(t_arg)
+                    elif isinstance(arg, (list, tuple)):
+                        args_list.append(tuple(arg))
+                    else:
+                        args_list.append(arg)
+
+            # Convert args to a hashable tuple
+            hash_args = tuple(args_list) if args_list else ()        
         
             if kwargs is not None and not isinstance(kwargs, dict):
                 raise TypeError("Keyword arguments must be a dictionary.")
-            
-            # Convert the arguments to a hashable tuple
-            
-            hash_args = tuple(args) if isinstance(args, List) else args if args else ()
             
             hash_kwargs = tuple(sorted(kwargs.items())) if isinstance(kwargs, dict) else kwargs
 
@@ -1345,6 +1361,10 @@ class CacheBank:
         ======
         Loads the cache bank from a file.
 
+        Attention:
+        ----------
+        Pickle data is unsafe, only load it from a trusted source.
+
         Arguments:
             filename (str | Path | None) :
                 The name of the file to load the cache bank from.
@@ -1428,11 +1448,57 @@ class CacheBank:
                     os.remove(path)
                     LOGGER.debug(f"Cache bank file {path} removed.")
                 else:
-                    LOGGER.warning(f"Cache bank file {path} does not exist, continuing ...")
+                    LOGGER.debug(f"Cache bank file {path} does not exist, continuing ...")
 
         except Exception as e:
             LOGGER.error(f"Error '{e.__class__.__name__}' -> removing cache bank files: {e}")
             raise CacheBankRemoveError(f"Error '{e.__class__.__name__}' -> removing cache bank files: {e}")
+
+    # -------------
+    # Async Save/Load
+
+    async def async_save(self, filename: str | Path | None = None, level_compression: int = 1) -> None:
+        """
+        async_save
+        ===========
+        Asynchronously saves the cache bank to a file.
+
+        Arguments:
+            filename (str | Path | None) :
+                The name of the file to save the cache bank to.
+                If None, it will use the default filename.
+            level_compression (int) :
+                The level of compression to use when saving the cache bank.
+                - Must be between 0 and 9
+        """
+        try:
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(None, self.save, filename, level_compression)
+        except Exception as e:
+            LOGGER.error(f"Error '{e.__class__.__name__}' -> asynchronously saving cache bank: {e}")
+            raise CacheBankAsyncSaveError(f"Error '{e.__class__.__name__}' -> asynchronously saving cache bank: {e}")
+
+    async def async_load(self, filename: str | Path | None = None) -> None:
+        """
+        async_load
+        ===========
+        Asynchronously loads the cache bank from a file.
+
+        Attention:
+        ----------
+        Pickle data is unsafe, only load it from a trusted source.
+
+        Arguments:
+            filename (str | Path | None) :
+                The name of the file to load the cache bank from.
+                If None, it will use the default filename.
+        """
+        try:
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(None, self.load, filename)
+        except Exception as e:
+            LOGGER.error(f"Error '{e.__class__.__name__}' -> asynchronously loading cache bank: {e}")
+            raise CacheBankAsyncLoadError(f"Error '{e.__class__.__name__}' -> asynchronously loading cache bank: {e}")
 
     # -------------
     # Helpers
@@ -1452,7 +1518,7 @@ class CacheBank:
             if converter_func is None:
                 raise ValueError(f"Converter function for cache type {self.cache_type} not found.")
             # Convert the cache bank to bytes
-            if self.cache_type not in [CacheType.ZLIB, CacheType.GZIP]:
+            if self.cache_type in [CacheType.ZLIB, CacheType.GZIP]:
                 return converter_func(self.cache_bank, level_compression)
             else:
                 return converter_func(self.cache_bank)
@@ -1597,14 +1663,14 @@ class CacheBank:
                 return None
              
             func_size: int = self.func_size_dict[key]
-            func_cached: int = sys.getsizeof(self.cache_bank[key])
+            func_cached: int = self._memory_size_checker(self.cache_bank[key])
             
             if func_cached >= func_size:
-                LOGGER.warning(
-                    f"Function {key} size {func_cached} exceeds maximum size {func_size}. Trimming it."
+                LOGGER.debug(
+                    f"_func_specific_mem_checker - Function {key} size {func_cached} exceeds maximum size {func_size}. Trimming it."
                 )
 
-                while func_cached >= func_size:
+                while func_cached > func_size:
                     # If the cache bank is full, remove the least recently used item
                     if self.lru:
                         self.cache_bank[key].popitem(last=False)
@@ -1612,7 +1678,10 @@ class CacheBank:
                         self.cache_bank[key].popitem(last=True)
                         
                     # Recalculate the size of the function for next iteration
-                    func_cached: int = sys.getsizeof(self.cache_bank[key])
+                    func_cached: int = self._memory_size_checker(self.cache_bank[key])
+                    LOGGER.debug(
+                        f"Function {key} size after trimming: {func_cached}"
+                    )
 
             return None
 
@@ -1629,14 +1698,17 @@ class CacheBank:
         If it is, it removes the least recently used item.
         """
         try:
-            total_cache_size: int = sys.getsizeof(self.cache_bank)
+            total_cache_size: int = self._memory_size_checker(self.cache_bank)
 
             while total_cache_size >= self.max_total_memory_size:
+                LOGGER.debug(f"_total_memory_checker - Total cache size: {total_cache_size}, Max total memory size: {self.max_total_memory_size}, removing least recently used item.")
+
                 # If the cache bank is full, remove the least recently used item
                 if self.lru:
                     self.cache_bank.popitem(last=False)
                 else:
                     self.cache_bank.popitem(last=True)
+                total_cache_size = self._memory_size_checker(self.cache_bank)
 
         except Exception as e:
             LOGGER.error(f"Error checking total memory size: {e}")
@@ -1646,25 +1718,25 @@ class CacheBank:
         """
         _func_memory_checker
         ====================
-        Checks if the memory size of the function is greater than the maximum size.
+        Checks if the memory size of the function is greater than the default maximum size.
         
         If it is, it removes the least recently used item.
         """
         try:
             for func in self.cache_bank:
-                func_size: int = sys.getsizeof(self.cache_bank[func])
+                func_size: int = self._memory_size_checker(self.cache_bank[func])
 
                 if func_size >= self.max_func_memory_size:
-                    LOGGER.warning(
-                        f"Function {func} size {func_size} exceeds maximum size {self.max_func_memory_size}. Trimming it."
+                    LOGGER.debug(
+                        f"_func_memory_checker - Function {func} size {func_size} exceeds maximum size {self.max_func_memory_size}. Trimming it."
                     )
-                    if len(self.cache_bank[func]) == 0:
-                        raise ValueError(f"Function {func} is empty.")
-                    # If the cache bank is full, remove the least recently used item
-                    if self.lru:
-                        self.cache_bank[func].popitem(last=False)
-                    else:
-                        self.cache_bank[func].popitem(last=True)
+                    while func_size > self.max_func_memory_size:
+                        # If the cache bank is full, remove the least recently used item
+                        if self.lru:
+                            self.cache_bank[func].popitem(last=False)
+                        else:
+                            self.cache_bank[func].popitem(last=True)
+                        func_size = self._memory_size_checker(self.cache_bank[func])
                         
         except Exception as e:
             LOGGER.error(f"Error checking function memory size: {e}")
@@ -1710,6 +1782,31 @@ class CacheBank:
                     path = path.with_suffix(suffix)
                     break
         return path
+
+    def _memory_size_checker(self, obj, seen=None) -> int:
+        if seen is None:
+            seen = set()
+        obj_id = id(obj)
+        # Check if the object has already been seen to avoid infinite recursion
+        if obj_id in seen:
+            return 0
+        # If not add obj to set
+        seen.add(obj_id)
+        # Get the size of the object
+        size = sys.getsizeof(obj)
+        # For nested data
+        if isinstance(obj, dict):
+            # Get values size
+            size += sum(self._memory_size_checker(v, seen) for v in obj.values())
+            # Get keys size
+            size += sum(self._memory_size_checker(k, seen) for k in obj.keys())
+        
+        # If the object is a list, tuple, or set
+        elif isinstance(obj, (list, tuple, set)):
+            # Sum every element
+            size += sum(self._memory_size_checker(i, seen) for i in obj)
+        return size
+
 
     @staticmethod
     def _dict_sanitizer(data: Dict[str, Any]) -> Dict[str, Any]:
@@ -1800,6 +1897,7 @@ class CacheBank:
                     if func_name in self.cache_bank:
                         # If it is, get the result from the cache bank
                         result = self.get(func, args, kwargs)
+                        # Will return None if no result is found
                         if result is not None:
                             return result
                         
@@ -1915,6 +2013,18 @@ class CacheBank:
 
         """
         try:
+            if not callable(func) and not isinstance(func, partial):
+                raise TypeError("Function must be callable or partial.")
+
+            # Get the function name
+            func_name = func.func.__name__ if isinstance(func, partial) else func.__name__
+
+            # Update func_size_dict if max_size is provided
+            if max_size is not None:
+                if not isinstance(max_size, CacheSize):
+                    raise TypeError("Max size must be a CacheSize.")
+                self.func_size_dict[func_name] = max_size
+
             if asyncio.iscoroutinefunction(func):
                 return self.async_wrapper(max_size)(func)
             else:

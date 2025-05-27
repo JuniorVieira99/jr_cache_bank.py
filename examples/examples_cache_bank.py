@@ -317,6 +317,8 @@ if __name__ == "__main__":
         # Make a cache bank
         cache: CacheBank = CacheBank(max_bank_size=100, lru=True, cache_type=CacheType.JSON)
 
+        cache.set_log_level(10)  # Set log level to DEBUG
+
         @cache.wrapper()
         def cached_square(x: int) -> int:
             if x < 0:
@@ -325,9 +327,10 @@ if __name__ == "__main__":
         
         for i in range(5):
             _ : int = cached_square(i)
-        
-        for i in range(10):
-            _ : int = cached_square(i)
+
+        # Cache report
+        print("\nChecking Reports:\n")
+        cache.print()
 
         # Save the cache bank
         cache.save()
@@ -341,11 +344,12 @@ if __name__ == "__main__":
         # Check the cache bank
         cache.print()
 
-        for i in range(10):
-            assert cache.get(cached_square, args=(i,), kwargs=None) == i*i , f"Error: {i} not in cache"
-
         # Remove files
         cache.remove_files()
+
+        for i in range(5):
+            assert cache.get(cached_square, args=(i,), kwargs=None) == i*i , f"Error: {i} not in cache"
+
 
     def example_save_load_yaml():
         print("\n===================================" \
@@ -419,6 +423,44 @@ if __name__ == "__main__":
         print("\nprint_full_report:\n")
         cache.print_full_report()
 
+    def example_kwargs():
+        print("\n===================================" \
+        "\nTest example_kwargs" \
+        "\n==================================="
+        )
+
+        # Make a cache bank
+        cache: CacheBank = CacheBank(max_bank_size=10, lru=True)
+
+        @cache.wrapper()
+        def multi(x: int, y: int) -> int:
+            return x + y
+        
+        for i in range(5):
+            _ : int = multi(x=i, y=i+10)
+        
+        for i in range(10):
+            _ : int = multi(x=i, y=i+10)
+        
+        for i in range(5):
+            _ : int = multi(i, y=i+20)
+
+        # Check report
+        print("\nChecking Reports:\n")
+        cache.print()
+
+        # Save the cache bank
+        cache.save()
+        # Clear the cache bank
+        cache.clear()
+        # Load the cache bank
+        cache.load()
+        # Remove files
+        cache.remove_files()
+        # Check the cache bank
+        print("\nChecking Reports After Load:\n")
+        cache.print()
+
     def example_specific_mem_restriction():
         print("\n===================================" \
         "\nTest example_specific_mem_restriction" \
@@ -476,3 +518,4 @@ if __name__ == "__main__":
     #example_save_load_yaml()
     #example_prints()
     #example_specific_mem_restriction()
+    example_kwargs()

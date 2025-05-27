@@ -2,17 +2,15 @@
 # Imports
 # -------------------------------------------------------------------------------------------------
 
-from email.policy import default
-from functools import cache
 import gzip
 import json
-from operator import le
 import yaml
 import zlib
 import logging
 import pickle
 
 from collections import OrderedDict
+from ast import literal_eval
 from typing import Any, Callable, Dict, Optional, Tuple
 
 from jr_cache_bank.config.setup_logger import setup_logger
@@ -45,6 +43,10 @@ class LoadersContainer:
     ============
     The LoadersContainer class is a container for cache loaders. It provides methods to load cache data
     from various formats such as pickle, zlib, gzip, json, and yaml.
+
+    Attention
+    ----------
+    Pickle data is unsafe to load, only use it if you trust the source of the data.
 
     Attributes:
         loaders (Dict[str, Callable]):
@@ -234,13 +236,10 @@ class LoadersContainer:
         """
         Cleanup the ConvertersContainer.
         """
-        for key, _ in self._loaders.items():
-            if key not in [CacheType.PICKLE, CacheType.ZLIB, CacheType.GZIP, CacheType.JSON, CacheType.YAML]:
-                del self._loaders[key]
-            else:
-                LOGGER.warning(f"Loader '{key}' not found in loaders.")
-                raise KeyError(f"Loader '{key}' not found in loaders.")
-        LOGGER.debug("CacheLoadComp cleanup complete.")
+        default_keys = {CacheType.PICKLE, CacheType.ZLIB, CacheType.GZIP, CacheType.JSON, CacheType.YAML}
+        keys_to_remove = [k for k in self._loaders.keys() if k not in default_keys]
+        for key in keys_to_remove:
+            del self._loaders[key]
 
     def get_keys(self) -> list:
         """
@@ -250,6 +249,16 @@ class LoadersContainer:
 
     # ------------
     # Helpers
+
+    def _reconstruct_key(self, func_name: str, args: Tuple, kwargs: Dict) -> Tuple:
+        if not args and not kwargs:
+            return (func_name,)
+        elif args and not kwargs:
+            return (func_name, args)
+        elif not args and kwargs:
+            return (func_name, kwargs)
+        else:
+            return (func_name, args, kwargs)
 
     def _deserialization(
         self, 
@@ -274,42 +283,36 @@ class LoadersContainer:
         
         for func_name, ord_dict in data.items():
             cache_bank[func_name] = OrderedDict()
+            # key is a stringified tuple / value is the cached value
             for key, value in ord_dict.items():
-                if isinstance(key, str):
-                    # Convert stringified tuple keys back to tuples
-                    if key.startswith("(") and key.endswith(")"):
-                        func: str = ""
-                        args: Tuple = ()
-                        kwargs: OrderedDict = OrderedDict()
+                if not isinstance(key, str):
+                    raise TypeError(f"Keys of cached function must be a string, got {type(key)}")
 
-                        # Remove parentheses and split by comma
-                        list_keys = key[1:-1].split(", ")
+                # Parse the stringified tuple
+                try:
+                    parsed = literal_eval(key)
+                except (ValueError, SyntaxError) as e:
+                    LOGGER.error(f"Error '{e.__class__.__name__}' -> Failed to parse key '{key}': {e}")
+                    continue
 
-                        # Make tuple keys
-                        if len(list_keys) > 1:
-                            for i in range(len(list_keys)):
-                                tuple_val = eval(list_keys[i])
-                                if isinstance(tuple_val, str):
-                                    func = tuple_val
-                                if isinstance(tuple_val, tuple):
-                                    args = tuple_val
-                                elif isinstance(tuple_val, list):
-                                    args = tuple(tuple_val)
-                                elif isinstance(tuple_val, OrderedDict):
-                                    kwargs = tuple_val
-                        else:
-                            raise ValueError(f"Invalid key format: {key} for function {func_name}")
+                if not isinstance(parsed, tuple):
+                    raise TypeError(f"Parsed key must be a tuple, got {type(parsed)}")
 
-                        if len(args) == 0 and len(kwargs) == 0:
-                            cache_bank[func_name][(func,)] = value
-                        elif len(args) > 0 and len(kwargs) == 0:
-                            cache_bank[func_name][(func, args)] = value
-                        elif len(args) == 0 and len(kwargs) > 0:
-                            cache_bank[func_name][(func, kwargs)] = value
-                        elif len(args) > 0 and len(kwargs) > 0:
-                            cache_bank[func_name][(func, args, kwargs)] = value
-                else:
-                    cache_bank[func_name][key] = value
+                # Get each part of the parsed tuple
+                parsed_func_name: str = parsed[0]
+                args: Tuple[Any, ...] = ()
+                kwargs: Dict[str, Any] = {}
+                
+                if len(parsed) == 2:
+                    args = parsed[1] if isinstance(parsed[1], tuple) else (parsed[1],)
+                elif len(parsed) == 3:
+                    args = parsed[1] if isinstance(parsed[1], tuple) else (parsed[1],)
+                    kwargs = parsed[2] if isinstance(parsed[2], dict) else {}
+                
+                # Make key a tuple
+                new_key = self._reconstruct_key(parsed_func_name, args, kwargs)
+                # Update the key in the cache bank
+                cache_bank[func_name][new_key] = value
         
         return cache_bank
 

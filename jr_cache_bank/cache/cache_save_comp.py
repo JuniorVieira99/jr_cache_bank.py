@@ -257,7 +257,7 @@ class ConvertersContainer:
 
     def _convert_tuple_key_to_string(
         self,
-        cache_bank: OrderedDict[str, OrderedDict[Tuple, Any]]
+        cache_bank: OrderedDict
     ) -> OrderedDict[str, OrderedDict[str, Any]]:
         """
         _convert_tuple_key_to_string
@@ -265,21 +265,20 @@ class ConvertersContainer:
         Converts the keys of the cache bank from tuples to strings.
 
         Arguments:
-            cache_bank (OrderedDict) :
+            cache_bank([str, OrderedDict[Tuple, Any]]) :
                 The cache bank to convert.
 
         Returns:
-            out (OrderedDict) :
+            out (OrderedDict[str, OrderedDict[str, Any]]) :
                 The converted cache bank.
         """
-        serializable_cache_bank = OrderedDict()
         for func_name, ord_dict in cache_bank.items():
-            serializable_cache_bank[func_name] = OrderedDict()
+            cache_bank[func_name] = OrderedDict()
             for key, value in ord_dict.items():
-                str_key = str(key)  # Convert tuple key to string
-                serializable_cache_bank[func_name][str_key] = value 
+                str_key = str(key)  # Convert tuple key to string -> will be deserialized later
+                cache_bank[func_name][str_key] = value 
                     
-        return serializable_cache_bank   
+        return cache_bank   
 
     # ------------
     # Converters
@@ -463,7 +462,7 @@ class ConvertersContainer:
         return {
             CacheType.PICKLE: self._make_pickle,
             CacheType.ZLIB: self._make_zlib,
-            CacheType.GZIP:self. _make_gzip,
+            CacheType.GZIP: self._make_gzip,
             CacheType.JSON: self._make_json,
             CacheType.YAML: self._make_yaml
         }
