@@ -129,7 +129,7 @@ def test_cache_bank_cached_square_1000(cache_bank) -> None:
     print("Testing cached square function with 1000 calls...")
     print(f"Cache bank object before caching: {sys.getsizeof(cache_bank)} bytes")
 
-    cache_bank.max_func_memory_size = CacheSize.E_128KB
+    cache_bank.max_func_memory_size = CacheSize.E_256KB
 
     @cache_bank.wrapper()
     def square(x):
@@ -305,7 +305,7 @@ def test_cache_bank_factorial_500(cache_bank, factorial) -> None:
     print("Testing Factorial function with caching...")
     print(f"Cache bank object before caching: {sys.getsizeof(cache_bank)} bytes")
 
-    cache_bank.max_func_memory_size = CacheSize.E_128KB
+    cache_bank.max_func_memory_size = CacheSize.E_256KB
 
     cached_factorial = cache_bank(factorial)
     

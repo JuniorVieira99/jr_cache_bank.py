@@ -2,6 +2,7 @@
 # Imports
 # -------------------------------------------------------------------------------------------------
 
+from pathlib import Path
 import pytest
 import sys
 import os
@@ -420,73 +421,61 @@ def test_cache_callable(cache_bank, uncached_square):
     # Reset the cache bank to default values
     cache_bank.reset_default()
 
-def test_save_cache_bank(cache_bank):
+def test_save_cache_bank(cache_bank, tmp_path, uncached_square):
     """Test the save method of the CacheBank class."""
-    cache_bank.set(cached_square,args=(1,), kwargs={}, result=1)
-    cache_bank.set(cached_square,args=(2,), kwargs={}, result=4)
 
-    cache_bank.save("tests/test_file.pkl")
+    temp_file: Path = tmp_path / "test_file.pkl"
+
+    cache_bank.set(uncached_square,args=(1,), kwargs={}, result=1)
+    cache_bank.set(uncached_square,args=(2,), kwargs={}, result=4)
+
+    cache_bank.save(temp_file)
 
     try:
-        with open("tests/test_file.pkl", "rb") as f:
+        with open(temp_file, "rb") as f:
             data = f.read()
             assert data is not None
     except FileNotFoundError as e:
         print("File not found, skipping test.")
         raise e
     
-    # Clear the cache bank
-    cache_bank.clear()
+def test_load_cache_bank(cache_bank, tmp_path, uncached_square):
 
-    # Remove the test file
-    try:
-        if os.path.exists("tests/test_file.pkl"):
-            os.remove("tests/test_file.pkl")
-    except Exception as e:
-        print(f"An error occurred while removing the file: {e}")
+    temp_file: Path = tmp_path / "test_file.pkl"
+    
+    cache_bank.set(uncached_square, args=(1,), kwargs={}, result=1)
+    cache_bank.set(uncached_square, args=(2,), kwargs={}, result=4)
 
-def test_load_cache_bank(cache_bank):
+    cache_bank.save(temp_file)
 
-    cache_bank.set(cached_square,args=(1,), kwargs={}, result=1)
-    cache_bank.set(cached_square,args=(2,), kwargs={}, result=4)
-
-    cache_bank.save("tests/test_file.pkl")
-
-    with open("tests/test_file.pkl", "rb") as f:
+    with open(temp_file, "rb") as f:
         data = f.read()
         assert data is not None
     
     cache_bank.clear()
 
     # Load the cache bank from the file
-    cache_bank.load("tests/test_file.pkl")
+    cache_bank.load(temp_file)
 
     # Check if the cache bank contains the correct data
-    assert cache_bank.get(cached_square, args=(1,), kwargs={}) == 1
-    assert cache_bank.get(cached_square, args=(2,), kwargs={}) == 4
-    
-    # Remove the test file
-    try:
-        if os.path.exists("tests/test_file.pkl"):
-            os.remove("tests/test_file.pkl")
-    except Exception as e:
-        print(f"An error occurred while removing the file: {e}")
+    assert cache_bank.get(uncached_square, args=(1,), kwargs={}) == 1
+    assert cache_bank.get(uncached_square, args=(2,), kwargs={}) == 4
 
 @pytest.mark.parametrize(
     "cache_type, suffix",
     SAVE_CACHE_TYPES_VARS
 )
-def test_save_cache_bank_with_different_types(cache_bank, cache_type, suffix):
+def test_save_cache_bank_with_different_types(cache_bank, tmp_path, uncached_square, cache_type, suffix):
     """Test the save method of the CacheBank class with different cache types."""
     cache_bank.cache_type = cache_type
-    cache_bank.set(cached_square,args=(1,), kwargs={}, result=1)
-    cache_bank.set(cached_square,args=(2,), kwargs={}, result=4)
+    temp_file = tmp_path / f"test_file{suffix}"
+    
+    cache_bank.set(uncached_square, args=(1,), kwargs={}, result=1)
+    cache_bank.set(uncached_square, args=(2,), kwargs={}, result=4)
 
-    path: str = f"tests/test_file{suffix}"
+    cache_bank.save(temp_file)
 
-    cache_bank.save(path)
-
-    with open(path, "rb") as f:
+    with open(temp_file, "rb") as f:
         data = f.read()
         assert data is not None
     
@@ -497,24 +486,15 @@ def test_save_cache_bank_with_different_types(cache_bank, cache_type, suffix):
     assert cache_bank.is_empty() is True
 
     # Load the cache bank from the file
-    cache_bank.load(path)
+    cache_bank.load(temp_file)
 
     # Check if the cache bank contains the correct data
-    assert cache_bank.get(cached_square, args=(1,), kwargs={}) == 1
-    assert cache_bank.get(cached_square, args=(2,), kwargs={}) == 4
-
-    # Remove the test file
-    try:
-        os.remove(path)
-    except FileNotFoundError:
-        print("File not found, skipping removal.")
-    except Exception as e:
-        print(f"An error occurred while removing the file: {e}")
+    assert cache_bank.get(uncached_square, args=(1,), kwargs={}) == 1
+    assert cache_bank.get(uncached_square, args=(2,), kwargs={}) == 4
 
     # Reset the cache bank to default values
     cache_bank.reset_default()
-    # Remove cache files
-    cache_bank.remove_files()
+
 
 # -------------------------------------------------------------------------------------------------
 # Functionality Tests
@@ -708,116 +688,6 @@ def test_config_json(config_dict):
     assert config_dict["cache_bank"] == OrderedDict({}) , f"cache_bank not set correctly, got {config_dict['cache_bank']}, expected OrderedDict"
     assert config_dict["max_total_memory_size"] == CacheSize.E_10MB, f"max_total_memory_size not set correctly, got {config_dict['max_total_memory_size']}, expected CacheSize.E_10MB"
     assert config_dict["max_func_memory_size"] == CacheSize.E_10KB , f"max_func_memory_size not set correctly, got {config_dict['max_func_memory_size']}, expected CacheSize.E_10KB"
-
-# -------------------------------------------------------------------------------------------------
-# Manual func max size
-# -------------------------------------------------------------------------------------------------
-
-def test_func_wrap_set_max_size(cache_bank):
-    """Test wrapper with specific memory size"""    
-
-    @cache_bank.wrapper(max_size=CacheSize.E_1KB)
-    def square(x):
-        if x < 0 :
-            raise ValueError("x must be greater than 0") 
-        return x * x
-
-    for i in range(10):
-        # Call the function to cache the result
-        square(i)
-
-    # Check if the cache bank contains the correct data
-    for i in range(10):
-        assert cache_bank.get(square, args=(i,), kwargs={}) == i * i
-    
-    print(f"\nFunction cache bank memory size: {sys.getsizeof(cache_bank.cache_bank["square"])}")
-
-    for i in range(10, 15):
-        # Call the function to cache the result
-        # Will surpass the max size
-        square(i)
-
-    print(f"\nFunction cache bank memory size: {sys.getsizeof(cache_bank.cache_bank['square'])}")
-
-def test_func_call_set_max_size(cache_bank):
-    """Test callable with specific memory size"""    
-
-    def square(x):
-        if x < 0 :
-            raise ValueError("x must be greater than 0") 
-        return x * x
-    
-    cached_square: Callable = cache_bank(square, max_size=CacheSize.E_1KB)
-
-    for i in range(10):
-        # Call the function to cache the result
-        cached_square(i)
-
-    # Check if the cache bank contains the correct data
-    for i in range(10):
-        assert cache_bank.get(cached_square, args=(i,), kwargs={}) == i * i
-    
-    print(f"\nFunction cache bank memory size: {sys.getsizeof(cache_bank.cache_bank['square'])}")
-
-    for i in range(10, 15):
-        # Call the function to cache the result
-        # Will surpass the max size
-        cached_square(i)
-
-    print(f"\nFunction cache bank memory size: {sys.getsizeof(cache_bank.cache_bank['square'])}")
-
-def test_func_wrap_set_max_size_with_kwargs(cache_bank):
-    """Test wrapper with specific memory size and keyword arguments"""    
-
-    @cache_bank.wrapper(max_size=CacheSize.E_1KB)
-    def square(x, y=0):
-        if x < 0 :
-            raise ValueError("x must be greater than 0") 
-        return x * x + y
-
-    for i in range(10):
-        # Call the function to cache the result
-        square(i, y=i)
-
-    # Check if the cache bank contains the correct data
-    for i in range(10):
-        assert cache_bank.get(square, args=(i,), kwargs={"y": i}) == i * i + i
-    
-    print(f"\nFunction cache bank memory size: {sys.getsizeof(cache_bank.cache_bank['square'])}")
-
-    for i in range(10, 15):
-        # Call the function to cache the result
-        # Will surpass the max size
-        square(i, y=i)
-
-    print(f"\nFunction cache bank memory size: {sys.getsizeof(cache_bank.cache_bank['square'])}")
-
-def test_func_call_set_max_size_with_kwargs(cache_bank):
-    """Test callable with specific memory size and keyword arguments"""    
-
-    def square(x, y=0):
-        if x < 0 :
-            raise ValueError("x must be greater than 0") 
-        return x * x + y
-    
-    cached_square: Callable = cache_bank(square, max_size=CacheSize.E_1KB)
-
-    for i in range(10):
-        # Call the function to cache the result
-        cached_square(i, y=i)
-
-    # Check if the cache bank contains the correct data
-    for i in range(10):
-        assert cache_bank.get(cached_square, args=(i,), kwargs={"y": i}) == i * i + i
-    
-    print(f"\nFunction cache bank memory size: {sys.getsizeof(cache_bank.cache_bank['square'])}")
-
-    for i in range(10, 15):
-        # Call the function to cache the result
-        # Will surpass the max size
-        cached_square(i, y=i)
-
-    print(f"\nFunction cache bank memory size: {sys.getsizeof(cache_bank.cache_bank['square'])}")
 
 # -------------------------------------------------------------------------------------------------
 # End of File

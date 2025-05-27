@@ -43,7 +43,7 @@ jobs:
         run: |
           uv venv
           uv sync
-          uv pip install -e
+          uv pip install -e .
 
       - name: Run functionality tests
         run: |
